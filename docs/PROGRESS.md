@@ -1,38 +1,33 @@
-# TradeFoundry — Progress
+# TradeFoundry｜开发进度
 
-Last updated (UTC): 2026-10-22/23, initial repository bootstrap (exact UTC time not recorded).
-Status: **Planning / documentation initialized; implementation has not started.**
-Branch: main
+更新日期：2026-10-23
+当前状态：**文档准备完成；程序开发尚未开始**。
+仓库分支：`main`
 
-## Completed
-- [x] Project charter and safety boundary defined.
-- [x] Created initial repository instructions and phased implementation plan.
+## 已完成
+- [x] 确认私有仓库 `illufluo/TradeFoundry` 可访问。
+- [x] 用中文整理统一需求与开发规范至 `AGENTS.md`。
+- [x] 精简项目文档，将固定规范和动态进度分离。
 
-## In progress
-- [ ] P0 project skeleton and reproducible offline vertical slice.
+## 正在进行
+- [ ] 阶段 0：用样例行情完成一条可重复运行的离线回测、入库、报告流程。
 
-## Not started
-- [ ] P1 OKX historical data
-- [ ] P2 Backtest, execution and costs
-- [ ] P3 Autonomous AI research pipeline
-- [ ] P4 Visualization and Feishu bot
-- [ ] P5 Paper trading only
+## 尚未开始
+- [ ] 阶段 1：OKX 历史行情与数据仓库
+- [ ] 阶段 2：完整成本模型、策略接口及独立验证
+- [ ] 阶段 3：自动 AI 研究循环
+- [ ] 阶段 4：可视化与飞书
+- [ ] 阶段 5：持续模拟盘（不涉及实盘）
 
-## Last verification
-- Private GitHub repository confirmed accessible.
-- No runtime, tests, API credentials, history or benchmark results yet.
-- Next session must verify actual repo tree, not assume any module exists.
+## 已知限制
+- 目前没有可运行的 Python 程序、回测结果或测试记录。
+- Grok Bot、飞书、外部 LLM 和数据供应商配置可由用户后续处理；开发阶段用 Mock 验证。
+- 不需要、也不得请求真实资金交易权限。
 
-## Blockers / decisions
-- Never request live trading keys; use fixture data first.
-- External API availability, Feishu credentials, Grok connectivity, paid data sources are optional.
-- User will handle Feishu and Grok account setup later.
+## 下一步
+1. Codex 阅读 `AGENTS.md` 和本文件，检查代码现状。
+2. 从阶段 0 开始实际实现，运行测试并记录结果。
+3. 更新本文件中的已完成任务、测试命令与结果、当前分支/提交或 PR、遇到的阻碍。
+4. Commit、Push；权限允许时创建 PR，再推进后续阶段。
 
-## Next actions
-1. Read AGENTS.md and docs/ROADMAP.md.
-2. Implement P0 code and tests in a feature branch; run and report commands.
-3. Update this file truthfully, commit and push, preferably open PR.
-4. Continue through phases only with passing gates and resource budget.
-
-## Update convention
-This file is a living status document. Freely edit/reorganize it. Track latest status, completed tasks, tests and outcome, branch/commit/PR, current limitations, next actions; do not overwrite truth with speculative progress.
+> 本文件是**可随时修改的工作日志**，不是永久规范。日期、任务状态、失败原因、测试结果和 GitHub 链接必须与实际工作相符。
