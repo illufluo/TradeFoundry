@@ -1,34 +1,92 @@
-# TradeFoundry Agent Instructions
+# TradeFoundry｜Codex 开发规范与需求
 
-Read README.md, docs/ROADMAP.md, and docs/PROGRESS.md at the start of every work session. Work incrementally, test before committing, and update docs/PROGRESS.md after each meaningful milestone and at session end. This file is durable guidance; progress is mutable.
+> 本文件是项目的**唯一长期需求说明和开发规范**。`docs/PROGRESS.md` 只记录最新执行进展，不重复大段需求。每次开始工作先读本文件和进度文件。除必要的代码、接口名、产品名和技术术语外，文档、代码注释、提交说明与最终汇报尽量使用中文。
 
-## Mission and scope
-Build an autonomous, auditable crypto quantitative research laboratory in Python. Only OKX BTC-USDT-SWAP and ETH-USDT-SWAP may be simulated as trade instruments. Other assets/venues and providers may be used solely as research features. Focus on historical research, validation, reporting, and *paper* trading. Never activate live capital trading, enable withdrawals, acquire credentials, or make paid purchases/subscriptions.
+## 1. 要做成什么
 
-## Ownership and interfaces
-- Core Python program owns scheduling, authoritative experiments, data, scoring, cost rules, and research state. External agents (Grok Bot, Codex, other LLMs) submit proposals through validated structured schemas; they do not own the evaluator.
-- Feishu is a replaceable chat adapter; the bot may report, query, pause/resume bounded research, but must not execute arbitrary shell commands.
-- No hard dependency on Grok Bot or Feishu credentials for local smoke tests. Provide .env.example and fixture-driven demonstrations.
-- Favor a simple single Python codebase, SQLite metadata, Parquet market data, Plotly HTML charts. Introduce complexity only when justified.
+开发一套由用户掌控的 Python AI 量化研究实验室：
 
-## Research and data integrity
-- Canonical simulated execution uses OKX instrument-specific market data and UTC timestamps. Handle exchange bar conventions explicitly, track data provenance, timestamp, availability timestamp, update time, and quality checks. Use only *closed* bars. Check instrument contract metadata and point-in-time eligibility.
-- Download paginated REST history within documented limits, rate limit, retry with bounded backoff, checkpoint, dedupe, and resume; never silently manufacture missing candles or fake history. Test with deterministic fixtures without network.
-- Initially use exchange OHLCV for 1h/4h/1d, with lower timeframe bars when justified. Mark/index/funding data are separate from trade prices. Funding applies only at actual settlement events for positions then held. OI and on-chain signals only if truly available historically at the decision time.
-- User's nominal OKX fees: maker 0.00016, taker 0.00045; 20% rebate on each, conditional on rebate actually qualifying. Net maker 0.000128, net taker 0.00036. Book original fee and later rebate separately, by actual filled notional. Record bids/asks, slippage, partial fills, funding, leverage, margins, mark-price liquidation approximations as applicable. Don't claim precise maker queue simulation from candles. Default to conservative taker execution with clearly disclosed assumptions.
-- Prevent look-ahead and data leakage. Segregate discovery, validation, final holdout; enforce holdout access programmatically and log each access. Freeze strategy artifacts and parameters before final test; do not repeatedly optimize on revealed holdout results. Record all attempts, including failures, with data, code, parameter, cost model, and run versions. Benchmark against buy-and-hold and simple baselines; assess trade counts, exposure, drawdown, robustness, sensitivity and multiple testing.
-- Never claim profit, statistical significance, or production-readiness without evidence.
+`采集数据 → AI 提出策略 → 检查/实现 → 批量回测 → 统计筛选 → 独立验证 → 生成报告 → 实时模拟 → 记录反馈 → 下一轮研究`
 
-## Safety and engineering
-- No live trading calls, no live trading keys, no withdrawal permission; simulated trading must be explicit and separate from live exchange access. Disable any live-order path structurally, not just via a bool.
-- Treat model-generated strategies and external inputs as untrusted. Prefer a declarative DSL or strict function contract. If running generated Python, use an isolated process/container with CPU/time/memory/file/network restrictions, and without access to credentials, evaluator code, final holdout, or writable canonical data. Python language-only sandboxing is not sufficient.
-- Never let generated code modify the evaluation rules, cost model, risk limits, official experiment records or test data. Test deterministic accounting invariants and hostile input cases.
-- Secrets from environment/secret manager only; never commit actual keys, .env, data dumps, private chat content, or reports containing sensitive values. Maintain .gitignore.
-- Resource ceilings: configurable LLM cost, API requests, experiments, time, memory and disk. Stop safely on budget exhaustion. Scheduler jobs must be idempotent/recoverable; alerts for failures and stalled processes.
-- Keep dependencies modest and pinned/locked; include formatting, linting, type checking where practical, unit/integration tests, user docs and runnable CLI examples.
-- Do not deploy, rent a server, initiate third-party purchases, or spend money without explicit approval.
+研究过程应能无人值守地持续运转，支持暂停、恢复、预算限制、失败重试和状态通知。目标是寻找**经过交易成本和样本外验证仍有统计证据**的策略，绝不把历史收益漂亮等同于实际可盈利。
 
-## Git and progress
-- Make meaningful, small commits on a feature branch; push to origin if authenticated. Do not force-push or overwrite unrelated changes. Prefer a PR for review over directly changing main.
-- Maintain docs/PROGRESS.md as the latest truthful current state. It may be rewritten/reorganized; preserve short milestone and blocker history. Include UTC timestamp, active phase, done/in progress/not started, commands executed with outcomes, commits/branch/PR links, outstanding risks, and next concrete steps.
-- Before ending, run whatever checks are available, write candid limits, update PROGRESS.md, commit, and push. If push fails, explicitly disclose why. Do not label unimplemented code complete.
+### 固定交易范围
+
+- **唯一模拟交易标的**：OKX `BTC-USDT-SWAP` 与 `ETH-USDT-SWAP`。
+- 模拟成交、PnL、仓位与费用以 **OKX 对应合约的市场/合约数据**为依据，不能用其他交易所同名合约价格代替。
+- 外部信息源仅用于产生特征和研究假设：可包括 CoinGlass、Etherscan、跨交易所行情、宏观和链上数据；按需逐步扩展，开始不要求付费。
+- 所有回测遵循 UTC 时间轴，保留数据来源和当时实际可获得的时间（`available_at`），禁止未来信息泄漏。
+
+### 必须遵守的资金安全边界
+
+- **本项目本轮不开发、更不运行真实资金下单**；没有实盘交易密钥、真实下单调用和提现权限。不要以 `live=false` 一处开关作为唯一隔离。
+- 允许历史回测、自建模拟盘、经过验证的 OKX 官方模拟交易环境；模拟凭证与实盘凭证严格分离。
+- 不得未经用户批准购买 API、订阅、服务器或产生其他付费；使用量上限可配置，超限安全停止。
+- AI 提交的代码/策略及外部输入均是不可信内容。优先采用受约束的策略规则格式；确需执行 AI 生成的 Python 代码，须使用有 CPU、内存、超时、网络、文件权限限制的独立容器或隔离进程，**不可**接触密钥、封存测试集、评分程序或可写入的正式数据。单靠 Python 语言内部限制不构成安全沙箱。
+
+## 2. 技术取舍和模块边界
+
+只建立一个简洁的 Python 项目，不主动引入微服务、复杂前端或大量中间件。
+
+| 模块 | 职责与首选实现 |
+|---|---|
+| OKX 数据层 | REST 历史下载、增量更新；必要时接 WebSocket；本地 Parquet 存行情 |
+| 研究特征层 | 可插拔外部数据适配器，统一时间戳、字段和当时可用时间 |
+| 策略接口 | 版本化、可校验的结构化策略提案；必要时隔离执行生成代码 |
+| 回测与评价 | Python、NumPy/Pandas 等成熟库；成交、成本、统计和样本外规则独立固定 |
+| 任务与实验记录 | Python 调度 + SQLite；任务恢复、失败追踪、预算控制、版本追溯 |
+| AI 研究员 | 可替换的标准 LLM 接口；Grok Bot 可通过受校验的策略提案接入，非硬依赖 |
+| 可视化 | Plotly 生成曲线、对比和独立 HTML 报告 |
+| 聊天 | 飞书应用机器人适配器，负责通知、查询、允许名单内的控制命令 |
+| 模拟盘 | 后续增加实时行情驱动的自建模拟/OKX 模拟环境，不触及实盘 |
+
+无 Grok、飞书、LLM、OKX 凭证和互联网时，仍须能够用固定样例数据运行演示与测试。密钥仅在运行环境中读取，不提交 `.env`，提供 `.env.example`。
+
+## 3. 回测真实性（不得缩水）
+
+1. **数据**：按 OKX 历史接口规则分页、限速、重试、校验、去重、检查缺口并支持断点恢复。不要凭空填补缺失数据；明确 OHLCV、标记价、指数价、资金费、OI、盘口的区别。只使用已收盘 K 线；注意日线时区边界、合约规格和数量单位。
+2. **手续费**：用户实际原始费率 Maker **0.016%**、Taker **0.045%**，两者均有 **20%** 返佣；对应净费率 **0.0128%**、**0.036%**（在返佣确实可得时）。每笔按成交名义额分别记录原始扣费与随后返佣，不把返佣当即时可用保证金。
+3. **成交和风险**：区分 Maker/Taker、价差、滑点、部分成交、资金费结算、保证金、杠杆、标记价格和强平风险。初版允许**明确标注假设的保守 Taker 成交模型**；不能凭普通 K 线断言 Maker 挂单一定成交。若数据不足以精确模拟，必须降低结果置信度并说明。
+4. **严谨验证**：研发集、验证集、最终封存测试集严格区分。支持多时间窗口、多周期、滚动前向验证；重叠的 3/6/12 个月与多个 K 线周期不能被当作独立样本。策略及参数冻结后才运行最终测试，记录测试访问和多重尝试次数，不允许因结果不佳反复调优封存测试集。
+5. **记录与对照**：所有成功、失败、被拒绝的提案都入库；保存策略版本/哈希、参数、数据版本/来源、成本模型版本、测试区间、指标计算口径、运行代码提交。至少报告净收益、最大回撤、风险调整后收益、交易次数、持仓暴露、手续费敏感性，并与简单基准对照。
+6. **可信边界**：策略生成器不能自行修改回测引擎、成本模型、评分规则、封存样本和既有实验记录；这些变更需要独立验证和测试。
+
+## 4. 分阶段交付与验收
+
+**阶段 0｜最小可运行闭环（先完成）**
+- 建立 Python 项目、依赖管理、命令行入口、配置、测试和基础 CI。
+- 使用固定样例行情跑一个基准策略，计算简单成交与净值，存入 SQLite，生成 Plotly HTML 报告。
+- **验收**：新环境无需账号/密钥，按 README 命令一次运行演示；结果可复现、测试通过。
+
+**阶段 1｜OKX 真实历史数据**
+- 实现 BTC/ETH 永续合约历史行情下载和增量更新、Parquet 数据仓库、数据质量检查、断点续传。
+- 初期优先 1h、4h、1day；按能力扩展 15m、逐笔、资金费等，不虚构 API 未提供的历史覆盖。
+- **验收**：模拟 API 测试完整；可用时再做真实公共接口连通性验证并记录覆盖与缺口。
+
+**阶段 2｜可信策略回测**
+- 策略统一接口、Maker/Taker 费用与返佣、资金费事件和保守执行成本模型、交易/权益明细、多个历史窗口及样本外验证。
+- **验收**：已知结果测试覆盖费用、资金费、仓位与防未来函数；报告明确模拟误差。
+
+**阶段 3｜自动研究循环**
+- AI 自动提交结构化提案、校验、回测、筛选、归档、总结并确定下一轮；SQLite 任务队列、重试、幂等、恢复、LLM/API/计算资源预算。
+- Grok Bot 可选接入，只提交经校验的提案，不能接管裁判系统。
+- **验收**：无人工点击，使用模拟 LLM 自动生成并记录至少 10 个候选实验，能够停机恢复。
+
+**阶段 4｜飞书与报告**
+- 生成每日摘要、异常报警、单策略报告及多策略对比；飞书支持已授权账号查询、暂停、恢复和有限研究指令。
+- **验收**：无凭证时可模拟发送；配置后再做飞书真实联调。聊天命令绝不能任意执行 Shell。
+
+**阶段 5｜持续模拟交易**
+- 实时数据驱动的自建模拟盘或 OKX 官方模拟盘（只允许模拟环境）；组合风险上限、心跳、持仓恢复、日常对账。
+- **验收**：重启后持仓恢复正确，连续前向模拟结果可追溯，程序不存在真实订单能力。
+
+**本版暂不做**：真实资金交易、精确 L2 Maker 排队撮合、自动购买外部服务、复杂网站前端、生产级多服务部署。
+
+## 5. Codex 工作方式
+
+- 先检查真实仓库，不假设代码已存在；先做小而可运行的功能，再向下一阶段迭代。
+- 每完成一个有意义的阶段就运行相应检查，真实记录命令及通过/失败情况。未实现不写“完成”。
+- **每次工作开始和结束**阅读/更新 `docs/PROGRESS.md`。进度文件可删改重排，但必须保留当前完成情况、阻碍、验证结果和下一步。
+- Git 使用功能分支、清晰的 Commit，推送 GitHub；推荐创建 PR 供审查，不得强制覆盖其他工作。如网络/权限不允许 Push，要明确说明。
+- 工作成果与汇报使用中文为主。遇到账号、付费、真实交易权限等受限事项，使用安全 Mock 继续其他模块，不擅自绕过。
+- 尽量推进当前能完成的步骤，但不能声称在会话结束后仍会自行持续开发；长期无人值守应由**建成后的本地/服务器程序**负责。
