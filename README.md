@@ -1,22 +1,21 @@
 # TradeFoundry
 
-An autonomous, auditable AI-assisted quantitative research laboratory focused on OKX BTC-USDT-SWAP and ETH-USDT-SWAP.
+一个面向 **OKX BTC/ETH USDT 永续合约**的 AI 自动化量化研究项目。
 
-Current phase: research and paper trading only. No live orders or real-capital execution.
+目标是让 AI 自主提出交易假设，系统自动完成策略实现、历史回测、统计验证、记录、可视化报告和模拟交易，并通过聊天机器人汇报结果。**当前项目不涉及真实资金交易。**
 
-## Start here
+## 从这里开始
 
-1. Read AGENTS.md for permanent coding and safety rules.
-2. Read docs/ROADMAP.md for specifications and delivery phases.
-3. Read docs/PROGRESS.md for the current implementation state.
-4. Give Codex the task in docs/CODEX_START.md.
+- [AGENTS.md](AGENTS.md)：**唯一的项目需求与开发规范**，包含架构原则、风险边界和分阶段验收要求。
+- [docs/PROGRESS.md](docs/PROGRESS.md)：**当前真实进度**，Codex 每次工作都应更新，可按需修改或重组。
 
-Documentation starts before the implementation. The repository is not yet a functioning trading system.
+使用 Codex 时，只需让它阅读以上两个文件并从未完成的任务继续开发。不要把尚未实现的功能写成已完成。
 
-## Working principles
+## 项目边界
 
-- OKX market and instrument data are the canonical basis for simulated fills and P&L.
-- External data (CoinGlass, on-chain data and other venues) may enrich research signals, with point-in-time availability enforced.
-- Research may operate autonomously within resource budgets, but must not place live orders, access exchange live trading credentials, or subscribe to paid services.
-- Experiment history must be reproducible; unsuccessful experiments matter too.
-- Feishu and Grok Bot are optional integration surfaces, not dependencies of the core research engine.
+- 交易标的仅限 OKX 的 `BTC-USDT-SWAP`、`ETH-USDT-SWAP`；模拟成交与盈亏优先基于 OKX 相应市场的数据。
+- 研究数据不限来源，可逐步增加 CoinGlass、链上、其他交易所等历史特征数据。
+- 在不动用真实资金、不产生未经批准的费用的前提下，尽量实现全自动研究。
+- Grok Bot 与飞书是可替换的外部接口；核心研究程序由自己掌握。
+
+> 当前仅有项目文档。真正的程序功能、测试结果和部署状态以进度文件及代码为准。
