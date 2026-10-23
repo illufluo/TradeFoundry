@@ -1,0 +1,24 @@
+name: 检查与离线演示
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: uv sync --locked --extra dev
+      - run: uv run --no-sync ruff check .
+      - run: uv run --no-sync ruff format --check .
+      - run: uv run --no-sync pytest -q
+      - run: uv run --no-sync tradefoundry demo
+      - uses: actions/upload-artifact@v4
+        with:
+          name: demo-${{ matrix.python-version }}
+          path: artifacts/reports/*.html
