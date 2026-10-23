@@ -55,4 +55,24 @@ uv run --no-sync ruff format --check .
 - 最大回撤包含初始资金点；净收益以已到账权益计算。Sharpe 使用逐 K 线收益、样本标准差、365 天年化且无无风险利率；零波动时为 `null`。成交笔数与完整买卖次数分别记录；持仓暴露为持仓 K 线占比。手续费敏感性重新运行两倍原始费率模型。
 - SQLite 保存输入行情、来源/哈希、策略参数/哈希、完整成交/权益/返佣明细、成本及指标版本和运行代码提交（未提交代码标记 `-dirty`）。当前属于研发演示，未做样本外、封存测试及统计显著性筛选，不能据此宣称盈利。
 
-阶段进展及尚未实现的能力见 [PROGRESS.md](PROGRESS.md)。
+## OKX 真实历史数据
+
+公共 REST 下载仅使用 OKX 两个无需凭证的只读端点（历史 OHLCV 与当前合约规格），无需安装任何交易 SDK。
+
+```bash
+uv run --no-sync tradefoundry download --instrument BTC-USDT-SWAP --interval 1h \
+  --start 2024-01-01T00:00:00Z --end 2024-01-02T00:00:00Z \
+  --max-pages 10 --max-requests 30
+uv run --no-sync tradefoundry quality --instrument BTC-USDT-SWAP --interval 1h \
+  --start 2024-01-01T00:00:00Z --end 2024-01-02T00:00:00Z
+```
+
+支持 `1h`、`4h`、`1day`；日线明确请求 `1Dutc`，所有区间为对齐 UTC 的 `[start, end)`。数据保存在 `warehouse/<标的>/<周期>/` 的内容哈希 Parquet 页面中，断点及当前合约规格快照在 `warehouse/catalog.sqlite3`。每页先原子写入并同步文件，再推进 SQLite 断点；同分区拒绝同时写入。再次执行相同命令自动恢复；扩大或移动时间范围可增量写入，重叠数据去重。`--refresh` 重扫既有范围修复缺口；冲突价格直接报错，原数据不被覆盖。
+
+下载按 `after` 向更早历史翻页，每页保守请求 100 条；请求间隔至少 0.15 秒，限流及暂时网络异常最多尝试 3 次，所有尝试和规格查询均占请求预算。默认每次最多 100 页、100 次请求，达到预算后安全退出，保留已完成页面。多个进程访问不同分区时须自行共享 IP 请求预算，当前限速器为单进程。
+
+质量结果给出完整性、实际覆盖、缺失数量、合并缺口区间和数据哈希。`finished` 仅表示已遍历到请求起点，`exhausted` 表示接口已无更多记录；两者都不等于无缺口，应以 `complete` 判断。程序不会填补缺口，`confirm=0` 未收盘数据不会入库，不能承诺 API 没有提供的历史覆盖。可用 `--warehouse` 修改仓库路径。
+
+`vol`、`volCcy`、`volCcyQuote` 分别保存为张数、基础币和计价币成交量；原始 9 字段同时保存。当前下载的是成交 K 线，**不是标记价、指数价、资金费、OI 或盘口**。历史发布时间不可还原，`available_at` 保守记录实际采集时刻，`availability_basis` 明确说明局限；当前合约规格也不代表历史规格。因此暂不把该仓库直接连接历史回测，后续需要独立校验历史合约规格、数据发布延迟和其他成本事件。
+
+接口依据：[OKX 官方 API 文档](https://www.okx.com/docs-v5/en/#order-book-trading-market-data-get-candlesticks-history)。当前阶段及尚未实现的能力见 [PROGRESS.md](PROGRESS.md)。

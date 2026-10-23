@@ -7,10 +7,12 @@ from pathlib import Path
 
 from tradefoundry.config import Config
 from tradefoundry.engine import COST_VERSION, METRIC_VERSION, backtest
-from tradefoundry.market import INSTRUMENTS, sample_data
+from tradefoundry.market import INSTRUMENTS, INTERVALS, sample_data, utc
+from tradefoundry.okx import PublicClient
 from tradefoundry.report import write_report
 from tradefoundry.store import Store, code_revision, encode
 from tradefoundry.strategy import Strategy
+from tradefoundry.warehouse import Warehouse, sync_history
 
 
 def demo(config: Config, instrument: str):
@@ -58,6 +60,22 @@ def parser():
     export.add_argument("experiment_id")
     export.add_argument("--db", type=Path, default=Path("artifacts/experiments.sqlite3"))
     export.add_argument("--output", type=Path, required=True)
+    for command, help_text in (
+        ("download", "下载或恢复 OKX 公共历史 K 线"),
+        ("quality", "查询 Parquet 数据覆盖及缺口"),
+    ):
+        data = commands.add_parser(command, help=help_text)
+        data.add_argument("--instrument", choices=INSTRUMENTS, required=True)
+        data.add_argument("--interval", choices=tuple(INTERVALS), default="1h")
+        data.add_argument("--start", type=utc, required=True, help="含 UTC 时区的起点（含）")
+        data.add_argument("--end", type=utc, required=True, help="含 UTC 时区的终点（不含）")
+        data.add_argument("--warehouse", type=Path, default=Path("warehouse"))
+        if command == "download":
+            data.add_argument("--max-pages", type=int, default=100)
+            data.add_argument(
+                "--max-requests", type=int, default=100, help="包含规格查询和所有重试的请求预算"
+            )
+            data.add_argument("--refresh", action="store_true", help="重扫同区间以修复缺口")
     return root
 
 
@@ -75,9 +93,27 @@ def main(argv=None):
                 | {"metrics": row["payload"].get("result", {}).get("metrics")}
                 for row in Store(args.db).list(args.limit)
             ]
-        else:
+        elif args.command == "report":
             write_report(Store(args.db).get(args.experiment_id), args.output, args.experiment_id)
             result = {"report": str(args.output.resolve())}
+        elif args.command == "download":
+            result = sync_history(
+                Warehouse(args.warehouse),
+                PublicClient(max_requests=args.max_requests),
+                args.instrument,
+                args.interval,
+                args.start,
+                args.end,
+                max_pages=args.max_pages,
+                refresh=args.refresh,
+            )
+        else:
+            result = Warehouse(args.warehouse).quality(
+                args.instrument,
+                args.interval,
+                args.start,
+                args.end,
+            )
         print(encode(result))
         return 0
     except (ValueError, TypeError, OSError) as error:

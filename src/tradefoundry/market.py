@@ -30,6 +30,25 @@ class Bar:
     volume_contracts: float
 
 
+def validate_bar(bar: Bar, interval: str):
+    if interval not in INTERVALS:
+        raise ValueError("不支持的周期")
+    for value in (bar.timestamp, bar.available_at):
+        if value.tzinfo is None or value.utcoffset() != timedelta(0):
+            raise ValueError("时间必须为 UTC")
+    if bar.available_at < bar.timestamp + INTERVALS[interval]:
+        raise ValueError("未收盘行情不能提前可用")
+    if bar.timestamp.timestamp() % INTERVALS[interval].total_seconds():
+        raise ValueError("K 线未对齐 UTC 周期边界")
+    values = (bar.open, bar.high, bar.low, bar.close, bar.volume_contracts)
+    if not all(math.isfinite(x) for x in values):
+        raise ValueError("行情不能含 NaN 或无穷值")
+    if min(values[:4]) <= 0 or bar.volume_contracts < 0:
+        raise ValueError("价格须大于零，成交量不能为负")
+    if bar.low > min(bar.open, bar.close) or bar.high < max(bar.open, bar.close):
+        raise ValueError("OHLC 高低价不一致")
+
+
 @dataclass(frozen=True)
 class MarketData:
     instrument: str
@@ -47,21 +66,7 @@ class MarketData:
             raise ValueError("至少需要两根已收盘 K 线")
         previous = None
         for bar in self.bars:
-            for value in (bar.timestamp, bar.available_at):
-                if value.tzinfo is None or value.utcoffset() != timedelta(0):
-                    raise ValueError("时间必须为 UTC")
-            if bar.available_at < bar.timestamp + INTERVALS[self.interval]:
-                raise ValueError("未收盘行情不能提前可用")
-            step = INTERVALS[self.interval].total_seconds()
-            if bar.timestamp.timestamp() % step:
-                raise ValueError("K 线未对齐 UTC 周期边界")
-            values = (bar.open, bar.high, bar.low, bar.close, bar.volume_contracts)
-            if not all(math.isfinite(x) for x in values):
-                raise ValueError("行情不能含 NaN 或无穷值")
-            if min(values[:4]) <= 0 or bar.volume_contracts < 0:
-                raise ValueError("价格须大于零，成交量不能为负")
-            if bar.low > min(bar.open, bar.close) or bar.high < max(bar.open, bar.close):
-                raise ValueError("OHLC 高低价不一致")
+            validate_bar(bar, self.interval)
             if previous is not None:
                 if bar.timestamp <= previous:
                     raise ValueError("行情时间重复或未升序排列")
