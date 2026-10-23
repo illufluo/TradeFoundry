@@ -23,6 +23,9 @@ LABELS = {
 
 
 def write_report(payload: dict, path: Path, experiment_id: str):
+    required = {"instrument", "strategy_hash", "fee_sensitivity", "result", "benchmark"}
+    if not required <= payload.keys():
+        raise ValueError("该实验类型暂不支持 HTML 导出；研发/封存明细保存在 SQLite 的 JSON 中")
     chart = go.Figure()
     for label, key in (("策略", "result"), ("买入持有基准", "benchmark")):
         points = payload[key]["equity"]

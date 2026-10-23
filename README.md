@@ -76,3 +76,20 @@ uv run --no-sync tradefoundry quality --instrument BTC-USDT-SWAP --interval 1h \
 `vol`、`volCcy`、`volCcyQuote` 分别保存为张数、基础币和计价币成交量；原始 9 字段同时保存。当前下载的是成交 K 线，**不是标记价、指数价、资金费、OI 或盘口**。历史发布时间不可还原，`available_at` 保守记录实际采集时刻，`availability_basis` 明确说明局限；当前合约规格也不代表历史规格。因此暂不把该仓库直接连接历史回测，后续需要独立校验历史合约规格、数据发布延迟和其他成本事件。
 
 接口依据：[OKX 官方 API 文档](https://www.okx.com/docs-v5/en/#order-book-trading-market-data-get-candlesticks-history)。当前阶段及尚未实现的能力见 [PROGRESS.md](PROGRESS.md)。
+
+## 独立验证与封存访问演示
+
+```bash
+# 只运行研发/验证区间及固定参数的滚动窗口
+uv run --no-sync tradefoundry validate-demo
+# 冻结全部输入后，才允许一次最终测试；以下都只使用合成夹具
+uv run --no-sync tradefoundry freeze-demo
+uv run --no-sync tradefoundry final-demo-test
+uv run --no-sync tradefoundry test-audit
+```
+
+固定夹具按前 120 根研发、随后 60 根验证、最后 60 根封存切分；各分区从空仓重新运行。`--fast`、`--slow` 选择受约束的均线窗口，`--instrument` 选择标的，`--db` 选择同一个审计数据库。滚动窗口只使用前 180 根，报告明确窗口相关性，禁止按窗口个数累计独立样本数。研发命令不计算封存区间结果。
+
+同一数据身份在一个数据库中只能冻结一组策略、配置和切分方案；冻结包含完整行情哈希、成本/指标版本及 Python 源码内容指纹。最终测试在计算前原子记录访问，同一数据集禁止再次测试，失败或中断也保留名额。禁止因结果不好而删库、改数据身份或重建切分来反复调优。审计入口属于本地流程保护，无法抵御拥有文件修改权限的进程；当前随包夹具公开可读，仅验证工作流，**不构成真实封存隔离**。真实研究仍需单独受控的评分程序和封存数据权限。
+
+研发/封存明细以 JSON 存在 SQLite 中，当前 HTML 导出支持 `demo` 实验。未实现真实策略筛选、多重尝试统计校正、自动 AI 研究队列和持续模拟盘。

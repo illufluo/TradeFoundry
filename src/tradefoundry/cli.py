@@ -12,6 +12,12 @@ from tradefoundry.okx import PublicClient
 from tradefoundry.report import write_report
 from tradefoundry.store import Store, code_revision, encode
 from tradefoundry.strategy import Strategy
+from tradefoundry.validation import (
+    SplitPlan,
+    ValidationLedger,
+    evaluate_development,
+    walk_forward,
+)
 from tradefoundry.warehouse import Warehouse, sync_history
 
 
@@ -76,6 +82,18 @@ def parser():
                 "--max-requests", type=int, default=100, help="包含规格查询和所有重试的请求预算"
             )
             data.add_argument("--refresh", action="store_true", help="重扫同区间以修复缺口")
+    for command, help_text in (
+        ("validate-demo", "固定合成数据的研发/验证与滚动窗口演示"),
+        ("freeze-demo", "冻结合成数据最终测试的全部输入"),
+        ("final-demo-test", "运行一次冻结后的合成数据最终测试"),
+        ("test-audit", "查看冻结及最终测试访问审计"),
+    ):
+        research = commands.add_parser(command, help=help_text)
+        research.add_argument("--db", type=Path, default=Path("artifacts/experiments.sqlite3"))
+        if command != "test-audit":
+            research.add_argument("--instrument", choices=INSTRUMENTS, default=INSTRUMENTS[0])
+            research.add_argument("--fast", type=int, default=3)
+            research.add_argument("--slow", type=int, default=8)
     return root
 
 
@@ -107,13 +125,44 @@ def main(argv=None):
                 max_pages=args.max_pages,
                 refresh=args.refresh,
             )
-        else:
+        elif args.command == "quality":
             result = Warehouse(args.warehouse).quality(
                 args.instrument,
                 args.interval,
                 args.start,
                 args.end,
             )
+        elif args.command == "test-audit":
+            result = ValidationLedger(Store(args.db)).audit()
+        else:
+            data, strategy = sample_data(args.instrument), Strategy(fast=args.fast, slow=args.slow)
+            plan = SplitPlan(120, 180, len(data.bars))
+            store = Store(args.db)
+            if args.command == "validate-demo":
+                payload = evaluate_development(data, strategy, config, plan)
+                payload["walk_forward"] = walk_forward(
+                    data,
+                    strategy,
+                    config,
+                    train_bars=60,
+                    validation_bars=30,
+                    step_bars=30,
+                    development_end=plan.validation_end,
+                )
+                experiment_id = store.record(payload)
+                result = {
+                    "experiment_id": experiment_id,
+                    "sealed_accessed": False,
+                    "metrics": {
+                        key: value["result"]["metrics"]
+                        for key, value in payload["partitions"].items()
+                    },
+                    "walk_forward": payload["walk_forward"],
+                }
+            elif args.command == "freeze-demo":
+                result = ValidationLedger(store).freeze(data, strategy, config, plan)
+            else:
+                result = ValidationLedger(store).final_test(data, strategy, config, plan)
         print(encode(result))
         return 0
     except (ValueError, TypeError, OSError) as error:
