@@ -1,0 +1,12 @@
+# 路径相对于命令运行目录；不读取或保存交易密钥。
+output_dir = "artifacts"
+initial_cash = 10000.0
+position_fraction = 0.25
+taker_fee = 0.00045
+maker_fee = 0.00016
+rebate_fraction = 0.20
+# 默认不假定返佣一定可得；确认后才能显式启用。
+rebate_confirmed = false
+rebate_delay_hours = 24
+spread_bps = 2.0
+slippage_bps = 3.0
