@@ -6,9 +6,11 @@ from dataclasses import asdict, replace
 from pathlib import Path
 
 from tradefoundry.config import Config
+from tradefoundry.demo_account import SITES, ConnectionFailure, DemoSettings
 from tradefoundry.engine import COST_VERSION, METRIC_VERSION, backtest
 from tradefoundry.market import INSTRUMENTS, INTERVALS, sample_data, utc
 from tradefoundry.okx import PublicClient
+from tradefoundry.onboarding import check_markets, first_start
 from tradefoundry.report import write_report
 from tradefoundry.store import Store, code_revision, encode
 from tradefoundry.strategy import Strategy
@@ -59,6 +61,21 @@ def parser():
     run = commands.add_parser("demo", help="固定合成行情离线演示")
     run.add_argument("--instrument", choices=INSTRUMENTS, default=INSTRUMENTS[0])
     run.add_argument("--output", type=Path, help="输出目录")
+    start = commands.add_parser("start", help="首次 OKX 官方模拟盘只读接入与市场检查")
+    start.add_argument("--env-file", type=Path, default=Path(".env"))
+    start.add_argument("--output", type=Path, default=Path("artifacts/start"))
+    start.add_argument("--days", type=int, default=7)
+    start.add_argument("--account-only", action="store_true", help="只检查真实模拟账户")
+    start.add_argument("--offline", action="store_true", help="完全离线 Mock，绝不加载密钥")
+    start.add_argument(
+        "--scenario",
+        choices=("success", "auth", "permission", "timeout", "environment", "excess-permission"),
+        default="success",
+    )
+    market = commands.add_parser("market-check", help="无密钥检查真实 BTC/ETH 历史数据")
+    market.add_argument("--site", choices=tuple(SITES), default="global")
+    market.add_argument("--days", type=int, default=7)
+    market.add_argument("--output", type=Path, default=Path("artifacts/start"))
     status = commands.add_parser("experiments", help="查询 SQLite 实验记录")
     status.add_argument("--db", type=Path, default=Path("artifacts/experiments.sqlite3"))
     status.add_argument("--limit", type=int, default=20)
@@ -101,7 +118,34 @@ def main(argv=None):
     args = parser().parse_args(argv)
     try:
         config = Config.load(args.config)
-        if args.command == "demo":
+        if args.command == "start":
+            if args.offline:
+                from tradefoundry.mock_account import mock_account
+
+                account = mock_account(args.scenario).snapshot()
+                result = {
+                    "mode": "offline_mock",
+                    "account_connected": False,
+                    "message": "离线 Mock 成功；没有连接真实 OKX 模拟盘",
+                    "mock_account": account,
+                    "synthetic_demo": demo(
+                        replace(config, output_dir=str(args.output)), INSTRUMENTS[0]
+                    ),
+                }
+            else:
+                if args.scenario != "success":
+                    raise ConnectionFailure("--scenario 仅可与 --offline 一起使用")
+                settings = DemoSettings.load(args.env_file)
+                result = first_start(
+                    settings, output=args.output, days=args.days, account_only=args.account_only
+                )
+            print(encode(result))
+            return 0 if result.get("market_ready", True) else 3
+        elif args.command == "market-check":
+            result = check_markets(args.site, output=args.output, days=args.days)
+            print(encode(result | {"account_connected": False, "account_status": "not_checked"}))
+            return 0 if result["market_ready"] else 3
+        elif args.command == "demo":
             if args.output:
                 config = replace(config, output_dir=str(args.output))
             result = demo(config, args.instrument)

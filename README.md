@@ -4,6 +4,98 @@
 
 目标是让 AI 自主提出交易假设，系统自动完成策略实现、历史回测、统计验证、记录、可视化报告和模拟交易。第一版通过命令行与本地报告查看状态，不依赖外部聊天机器人。**当前项目不涉及真实资金交易。**
 
+## macOS 首次 OKX 模拟盘接入
+
+Codex 已实现签名、UTC 校时、站点选择、只读权限检查、账户字段转换、错误提示、真实公共行情下载和离线 Mock。你无需写代码；你需要亲自在 OKX 网站创建模拟盘 Key，并在本地填写三个凭证。
+
+### 1. 安装环境（在“终端”执行）
+
+已有本项目目录时直接进入；尚未下载时执行 `git clone https://github.com/illufluo/TradeFoundry.git`。本功能须在对应 PR 合并后的版本，或审查分支上使用。
+
+```bash
+cd ~/TradeFoundry
+# 已安装 uv 可跳过以下两行；这是 uv 官方免费安装器
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source "$HOME/.local/bin/env"
+uv sync --locked --extra dev
+uv run --no-sync tradefoundry start --offline
+```
+
+uv 会按项目的 `.python-version` 准备 Python 和锁定依赖。首次安装需要网络，完成后离线模式无需网络和账号。最后一条命令输出 `mode: offline_mock`、`account_connected: false` 和合成行情报告路径；它仅表示本机演示正常，**不表示真实模拟盘已连接**。
+
+### 2. 在 OKX 网站亲自创建 Key
+
+1. 登录自己的 OKX 账户，进入 **交易 → 模拟交易**，确认页面显示模拟环境；按页面提示完成模拟账户初始化。
+2. 在模拟交易个人中心/API 页面选择 **创建模拟交易 API Key**，只勾选 **Read/读取**。不要使用实盘 API 管理页面创建的 Key，不勾选 Trade 或 Withdraw。
+3. 保存 API Key、Secret Key，以及自己设置的 Passphrase（不是登录密码）。如果绑定 IP，填写本机实际访问 OKX 的出口 IP；网络变化后需在网站更新白名单。
+4. 确认账户注册站点。全球站选择 `global`；注册于 `app.okx.com` 的美国/澳洲账户选择 `us`；注册于 `my.okx.com` 的欧洲账户选择 `eea`。按实际站点选择，不自动跨站试探密钥。特定站点若不提供 BTC/ETH 永续或模拟账户，该能力会明确失败，不绕过站点限制。
+
+网页菜单名称可能随语言变化；官方入口说明见 [OKX Demo Trading](https://www.okx.com/docs-v5/en/#overview-demo-trading-services)。本程序严格只支持 Read；若网页无法创建仅 Read 的模拟盘 Key，请先向 OKX 确认，不能用开启 Trade 代替。
+
+### 3. 填写本地配置
+
+```bash
+# 仅第一次执行复制；已有 .env 时不要重复覆盖
+cp -n .env.example .env
+chmod 600 .env
+open -e .env
+```
+
+在编辑器里替换这三个值并保存，不要粘贴到聊天、Shell 命令参数或截图中：
+
+```dotenv
+OKX_DEMO_API_KEY=你的模拟盘APIKey
+OKX_DEMO_SECRET_KEY=你的模拟盘SecretKey
+OKX_DEMO_PASSPHRASE=创建Key时设置的Passphrase
+OKX_SITE=global
+OKX_TIMEOUT_SECONDS=15
+```
+
+填写时使用普通英文引号或不加引号。配置支持 `.env` 的 `KEY=VALUE`、整行注释和配对引号；不执行 Shell、不作变量替换。环境变量中同名字段优先于 `.env`。其他目录的配置可通过 `--env-file /绝对路径/.env` 选择。
+
+`.env` 已加入 Git 忽略规则。程序不打印凭证/签名，不保存私有原始响应，不把账户快照写进数据库或 HTML；余额和目标合约持仓只在当前终端显示，请自行保护终端记录。公共行情和研究产物可正常保存。
+
+### 4. 启动并检查结果
+
+```bash
+uv run --no-sync tradefoundry start
+open artifacts/start/market.html
+```
+
+正常输出包括 `account_connected: true`、`permission: read_only`、模拟账户模式、USD 折算总权益、USDT/BTC/ETH 余额、BTC/ETH 永续持仓（张数），以及 `market_ready: true`。没有持仓时列表为空属于正常情况。账户检查不要求设置杠杆或修改账户模式。
+
+默认检查最近完整的 7 天 1h 行情，收盘边界额外留出一小时。质量结果含两个标的的 `rows`、`expected_rows`、`missing_count` 和 `complete`；文件位于 `artifacts/start/quality.json`，公共 Parquet 位于 `artifacts/start/warehouse/`。当前市场 HTML 展示真实合约价格曲线与质量信息，**不是完整可信历史回测或可盈利证明**。
+
+```bash
+# 分开验证账户与公开市场，排查问题时使用
+uv run --no-sync tradefoundry start --account-only
+uv run --no-sync tradefoundry market-check --site global --days 1
+# 完整离线测试与检查
+uv run --no-sync pytest -q
+uv run --no-sync ruff check .
+uv run --no-sync ruff format --check .
+```
+
+退出码：`0` 表示所请求步骤成功，`2` 表示配置/账户/本地执行失败，`3` 表示账户可能已连接但公共数据不完整。后者会保留账户成功信息及市场失败说明；不要把“账户成功”误认为“研究数据完整”。
+
+### 常见错误
+
+| 提示 | 你需要做的操作 |
+|---|---|
+| 凭证缺失/格式错误 | 确认 `.env` 已保存且不再含 `your_...` 占位值，三项来自同一个模拟盘 Key |
+| 环境不匹配 | 在模拟交易页面重新创建 Key；程序不会退回实盘请求 |
+| Passphrase/签名错误 | 核对 Passphrase 和 Secret Key，避免多余空格及编辑器智能引号 |
+| 找不到 Key/站点错误 | 按账户注册站点检查 `OKX_SITE`，不切换到其他站点绕过限制 |
+| 权限不足或不是仅 Read | 创建仅 Read 的模拟盘 Key，移除 Trade/Withdraw，不增加权限 |
+| 时间校验失败/过期 | macOS“系统设置 → 通用 → 日期与时间”打开自动设置，再重新运行 |
+| IP 不在白名单 | 在 OKX 检查 Key 的 IP 设置与本机出口 IP |
+| 网络/TLS/重定向/超时 | 检查到所选 OKX 官方域名的网络，稍后重试；不关闭证书校验 |
+| 公共数据有缺口 | 查看质量结果，重试 `market-check --days 1`；程序不填补缺失行情 |
+
+HTTP 请求固定为 GET，私有端点只有账户配置、余额和持仓；所有私有请求固定携带 `x-simulated-trading: 1`，不跟随重定向。全球站 REST 使用 `openapi.okx.com`，美国/澳洲 `us.okx.com`，欧洲 `eea.okx.com`。来源：[官方认证与站点文档](https://www.okx.com/docs-v5/en/#overview-rest-authentication)。
+
+Codex 的 Mock 测试和公开行情连通性检查不使用你的密钥；**首次真实私有连接验收由你在本地执行 `start --account-only` 完成**。当前不提供下单、撤单、划转、LLM 或持续模拟交易执行功能。
+
 ## 从这里开始
 
 - [AGENTS.md](AGENTS.md)：**唯一的项目需求与开发规范**，包含架构原则、风险边界和分阶段验收要求。
@@ -44,7 +136,7 @@ uv run --no-sync ruff check .
 uv run --no-sync ruff format --check .
 ```
 
-输出目录可通过 `demo --output <目录>` 修改。`experiments` 和 `report` 的 `--db` 参数支持其他数据库路径。配置使用严格校验的 TOML，未知字段或非法数值直接拒绝；项目不读取 `.env`，也不接收任何交易密钥。
+输出目录可通过 `demo --output <目录>` 修改。`experiments` 和 `report` 的 `--db` 参数支持其他数据库路径。回测成本使用严格校验的 TOML；仅首次模拟盘接入命令读取 `.env` 中的模拟盘只读凭证，离线演示不读取凭证。
 
 ## 当前模型口径
 

@@ -18,6 +18,7 @@ jobs:
       - run: uv run --no-sync ruff format --check .
       - run: uv run --no-sync pytest -q
       - run: uv run --no-sync tradefoundry demo
+      - run: uv run --no-sync tradefoundry start --offline
       - uses: actions/upload-artifact@v4
         with:
           name: demo-${{ matrix.python-version }}
