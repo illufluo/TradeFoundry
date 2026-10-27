@@ -3,7 +3,7 @@
 更新日期：2026-10-27（北京时间）
 当前状态：**模拟盘只读接入与真实行情条件重放已实现；真实私有连接待用户本地验收，完整可信历史回测未完成**。
 工作分支：`codex/okx-history-demo`，基于账户接入分支 `codex/okx-demo-start`。
-PR #2 已由用户合并；[PR #3](https://github.com/illufluo/TradeFoundry/pull/3) 为账户接入（独立可验收）。真实历史条件重放作为依赖 PR #3 的后续 PR，均不自动合并。
+PR #2 已由用户合并；[PR #3](https://github.com/illufluo/TradeFoundry/pull/3) 为账户接入（独立可验收），[PR #4](https://github.com/illufluo/TradeFoundry/pull/4) 为真实历史条件重放（base 为 #3 分支）。请按 #3、#4 顺序审查合并；两者均未由 Codex 合并。
 本地此前同步的 AGENTS.md 未提交改动已安全保存到 Git stash，当前规范与 main 一致。
 
 ## 本轮账户只读接入
@@ -23,6 +23,7 @@ PR #2 已由用户合并；[PR #3](https://github.com/illufluo/TradeFoundry/pull
 - 缺少规格、质量报告变更、缺口或历史成交量单位与当前面值冲突时拒绝重放。保存当前规格快照、真实采集时刻、原始数据哈希、假设副本和全部结果/拒绝记录，不改写原始 Parquet 的 available_at。
 - 历史规格和发布延迟未验证；副本明确假设收盘后一小时才可用。资金费未取得，全部收益注明未计资金费；`trusted_backtest_ready` 固定 false。仍不具备完整标记价、强平和部分成交模型。
 - 本地全量 **105 passed**，Ruff 检查及格式检查通过；`uv build --offline` 生成源码包与 wheel。
+- 研究实现提交 `2cc174d` 的 [GitHub Actions](https://github.com/illufluo/TradeFoundry/actions/runs/40466318804) 已成功，Python 3.11/3.13 两项均通过。独立环境重新安装 wheel 后，在源码目录外运行 `start --offline` 成功；安装包包含账户接入、历史研究及离线夹具。
 - 实际无密钥执行 `research --site global --days 1` 成功；随后验证 README 默认 `--days 7`：BTC/ETH 均 **168/168** 根 1h、缺口 0，两个条件重放及基准/费用敏感性报告生成成功。只验证公共数据及计算流程，没有真实私有模拟盘连接。
 - 本轮研究产物在 `artifacts/real-research-default/`，正常 `start` 默认在 `artifacts/start/`；不保存账户数据或凭证。
 - 自动浏览器拒绝 file URL，未进行视觉截图验收；报告生成、内容、规格/费用口径和落盘由测试校验，用户可按 README 用 macOS `open` 查看。
