@@ -268,7 +268,20 @@ def test_full_start_mock_private_and_public_do_not_persist_credentials(tmp_path)
 
     def transport(path, params):
         if path.endswith("/instruments"):
-            data = [{"instId": params["instId"], "ctType": "linear", "settleCcy": "USDT"}]
+            data = [
+                {
+                    "instId": params["instId"],
+                    "ctType": "linear",
+                    "settleCcy": "USDT",
+                    "ctValCcy": params["instId"].split("-")[0],
+                    "ctVal": "0.1",
+                    "ctMult": "1",
+                    "lotSz": "0.01",
+                    "minSz": "0.01",
+                    "tickSz": "0.1",
+                    "state": "live",
+                }
+            ]
         else:
             data = [
                 [
@@ -291,7 +304,7 @@ def test_full_start_mock_private_and_public_do_not_persist_credentials(tmp_path)
     result = first_start(
         settings(), output=tmp_path, days=1, account_client=client, public_client=public, now=NOW
     )
-    assert result["market_ready"] and len(result["quality"]) == 2
+    assert result["market_ready"] and result["research_ready"] and len(result["quality"]) == 2
     for path in tmp_path.rglob("*"):
         if path.is_file():
             assert all(secret.encode() not in path.read_bytes() for secret in SECRETS)

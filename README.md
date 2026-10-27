@@ -59,24 +59,26 @@ OKX_TIMEOUT_SECONDS=15
 
 ```bash
 uv run --no-sync tradefoundry start
-open artifacts/start/market.html
+open artifacts/start/research.html
 ```
 
-正常输出包括 `account_connected: true`、`permission: read_only`、模拟账户模式、USD 折算总权益、USDT/BTC/ETH 余额、BTC/ETH 永续持仓（张数），以及 `market_ready: true`。没有持仓时列表为空属于正常情况。账户检查不要求设置杠杆或修改账户模式。
+正常输出包括 `account_connected: true`、`permission: read_only`、模拟账户模式、USD 折算总权益、USDT/BTC/ETH 余额、BTC/ETH 永续持仓（张数），以及 `market_ready: true`、`research_ready: true`。没有持仓时列表为空属于正常情况。账户检查不要求设置杠杆或修改账户模式。`trusted_backtest_ready: false` 是预期结果，说明完整可信回测尚未实现。
 
-默认检查最近完整的 7 天 1h 行情，收盘边界额外留出一小时。质量结果含两个标的的 `rows`、`expected_rows`、`missing_count` 和 `complete`；文件位于 `artifacts/start/quality.json`，公共 Parquet 位于 `artifacts/start/warehouse/`。当前市场 HTML 展示真实合约价格曲线与质量信息，**不是完整可信历史回测或可盈利证明**。
+默认检查最近完整的 7 天 1h 行情，收盘边界额外留出一小时。质量结果含两个标的的 `rows`、`expected_rows`、`missing_count` 和 `complete`；文件位于 `artifacts/start/quality.json`，公共 Parquet 位于 `artifacts/start/warehouse/`。`market.html` 展示价格和质量，`research.html` 链接 BTC/ETH 的条件重放净值、基准、手续费敏感性和限制说明。公共研究明细保存在 `research.sqlite3`。**条件重放不是完整可信历史回测或可盈利证明**。
 
 ```bash
 # 分开验证账户与公开市场，排查问题时使用
 uv run --no-sync tradefoundry start --account-only
 uv run --no-sync tradefoundry market-check --site global --days 1
+# 不读取 .env、不连接私有账户，单独运行真实公共行情条件重放
+uv run --no-sync tradefoundry research --site global --days 7
 # 完整离线测试与检查
 uv run --no-sync pytest -q
 uv run --no-sync ruff check .
 uv run --no-sync ruff format --check .
 ```
 
-退出码：`0` 表示所请求步骤成功，`2` 表示配置/账户/本地执行失败，`3` 表示账户可能已连接但公共数据不完整。后者会保留账户成功信息及市场失败说明；不要把“账户成功”误认为“研究数据完整”。
+退出码：`0` 表示所请求步骤成功，`2` 表示配置/账户/本地执行失败，`3` 表示账户可能已连接但公共数据或条件重放未完成。后者保留已完成步骤及失败说明；不要把“账户成功”误认为“研究数据完整”。
 
 ### 常见错误
 
@@ -95,6 +97,19 @@ uv run --no-sync ruff format --check .
 HTTP 请求固定为 GET，私有端点只有账户配置、余额和持仓；所有私有请求固定携带 `x-simulated-trading: 1`，不跟随重定向。全球站 REST 使用 `openapi.okx.com`，美国/澳洲 `us.okx.com`，欧洲 `eea.okx.com`。来源：[官方认证与站点文档](https://www.okx.com/docs-v5/en/#overview-rest-authentication)。
 
 Codex 的 Mock 测试和公开行情连通性检查不使用你的密钥；**首次真实私有连接验收由你在本地执行 `start --account-only` 完成**。当前不提供下单、撤单、划转、LLM 或持续模拟交易执行功能。
+
+### 真实行情研究演示的具体含义
+
+账户接入与研究结果是两项独立能力：真实账户验收只需要 `start --account-only`；`research` 完全不需要 Key。默认 `start` 在账户和行情检查成功后自动完成条件重放，不需要你做数据转换。
+
+- 数据来自 OKX 对应 BTC/ETH 永续成交 K 线，绝不使用固定合成夹具冒充真实数据。完整性及内容哈希检查失败会拒绝重放。
+- 一张合约的基础币数量按采集时快照的 `ctVal × ctMult` 换算，数量按 `lotSz` 向下取整并满足 `minSz`；买入价格按 `tickSz` 向上取整，卖出向下取整。缺失字段不推定默认值；如果历史 `volCcy` 与 `vol × ctVal × ctMult` 不一致，拒绝套用当前规格。
+- 上述成交量检查只能发现单位冲突，**不能证明当前规格在过去始终有效**。本演示明确把采集时规格作为重放假设，保留快照及采集时间，不宣称已经取得历史规格。
+- 历史实际发布时间未知。Parquet 的真实 `available_at/observed_at` 保留；只在重放副本中假设收盘后一小时可用，最早再下一根开盘成交。这个缓冲也不能证明真实延迟，报告明确 `historical_release_verified: false`。
+- 不取得或编造资金费；收益指标明确为**未计资金费**，不能把缺失费用理解为实际零费用。按用户既定原始 Taker 费率扣费，返佣默认不确认。仍假设无杠杆、全额 Taker 成交，没有完整标记价/强平/部分成交模型。
+- 研究初始资金来自独立成本配置，默认 10,000 USDT、25% 仓位；不读取模拟账户余额来决定研究资金。策略只是固定均线演示，未作样本外或封存测试，也未筛选盈利策略。
+
+因此本轮交付的是“真实模拟账户只读连接”和“真实行情条件重放闭环”。历史规格、数据发布证据、资金费、风险模型及统计筛选属于后续独立开发，不把它们标记为完成。
 
 ## 从这里开始
 
@@ -141,7 +156,7 @@ uv run --no-sync ruff format --check .
 ## 当前模型口径
 
 - 随包提供 240 根固定合成 1h K 线，BTC/ETH 使用演示用合约单位，**不是真实 OKX 历史数据或当前合约规格**。数据版本由完整内容哈希标识。
-- 策略为受约束的均线规则，对照为买入持有。信号只看 `available_at <= 当前开盘时间` 的此前已收盘 K 线；最后一根预定收盘平仓。只做多、无杠杆、按整数张数模拟，资金和仓位均以 USDT 计。
+- 策略为受约束的均线规则，对照为买入持有。信号只看 `available_at <= 当前开盘时间` 的此前已收盘 K 线；最后一根预定收盘平仓。只做多、无杠杆；合成夹具按整数张，真实行情条件重放按规格数量步长，资金以 USDT 计。
 - Taker 原始费率 0.045%，Maker 原始费率 0.016% 仅作配置预留，**没有 Maker 撮合**。默认按原始手续费扣款；只有 `rebate_confirmed = true` 时才生成 20% 应收返佣，并至少延后 1 小时到账（默认 24 小时）。对应净费率 0.036% / 0.0128% 仅在返佣确实可得时成立。未到账返佣不计现金和净收益。
 - 不利成交价格使用半价差加滑点；初版假设小额 Taker 全额成交，未模拟盘口、部分成交、资金费、标记价、保证金或强平。期末权益为现金加持仓收盘估值；该实现只是无杠杆研究近似。
 - 最大回撤包含初始资金点；净收益以已到账权益计算。Sharpe 使用逐 K 线收益、样本标准差、365 天年化且无无风险利率；零波动时为 `null`。成交笔数与完整买卖次数分别记录；持仓暴露为持仓 K 线占比。手续费敏感性重新运行两倍原始费率模型。
@@ -165,7 +180,7 @@ uv run --no-sync tradefoundry quality --instrument BTC-USDT-SWAP --interval 1h \
 
 质量结果给出完整性、实际覆盖、缺失数量、合并缺口区间和数据哈希。`finished` 仅表示已遍历到请求起点，`exhausted` 表示接口已无更多记录；两者都不等于无缺口，应以 `complete` 判断。程序不会填补缺口，`confirm=0` 未收盘数据不会入库，不能承诺 API 没有提供的历史覆盖。可用 `--warehouse` 修改仓库路径。
 
-`vol`、`volCcy`、`volCcyQuote` 分别保存为张数、基础币和计价币成交量；原始 9 字段同时保存。当前下载的是成交 K 线，**不是标记价、指数价、资金费、OI 或盘口**。历史发布时间不可还原，`available_at` 保守记录实际采集时刻，`availability_basis` 明确说明局限；当前合约规格也不代表历史规格。因此暂不把该仓库直接连接历史回测，后续需要独立校验历史合约规格、数据发布延迟和其他成本事件。
+`vol`、`volCcy`、`volCcyQuote` 分别保存为张数、基础币和计价币成交量；原始 9 字段同时保存。当前下载的是成交 K 线，**不是标记价、指数价、资金费、OI 或盘口**。历史发布时间不可还原，`available_at` 保守记录实际采集时刻，`availability_basis` 明确说明局限；当前合约规格也不代表历史规格。仓库可用于上述带假设的条件重放，完整可信历史回测仍需独立校验历史合约规格、数据发布延迟和其他成本事件。
 
 接口依据：[OKX 官方 API 文档](https://www.okx.com/docs-v5/en/#order-book-trading-market-data-get-candlesticks-history)。当前阶段及尚未实现的能力见 [PROGRESS.md](PROGRESS.md)。
 
