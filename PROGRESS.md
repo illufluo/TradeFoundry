@@ -1,10 +1,17 @@
 # TradeFoundry｜开发进度
 
-更新日期：2026-10-27（北京时间）
+更新日期：2026-11-01（北京时间）
 当前状态：**模拟盘只读接入与真实行情条件重放已实现；真实私有连接待用户本地验收，完整可信历史回测未完成**。
-工作分支：`codex/okx-history-demo`，基于账户接入分支 `codex/okx-demo-start`。
-PR #2 已由用户合并；[PR #3](https://github.com/illufluo/TradeFoundry/pull/3) 为账户接入（独立可验收），[PR #4](https://github.com/illufluo/TradeFoundry/pull/4) 为真实历史条件重放（base 为 #3 分支）。请按 #3、#4 顺序审查合并；两者均未由 Codex 合并。
+当前分支：`main`，本地与 GitHub 同步；本地和远端均只保留 main 分支。
+PR #3 已合并到 main；PR #4 随后合并到原账户分支。本次根据用户明确授权，通过新建 [PR #5](https://github.com/illufluo/TradeFoundry/pull/5) 将研究功能正常合并到 main，合并提交为 `9592d73`，没有重复开发或强制推送。
 本地此前同步的 AGENTS.md 未提交改动已安全保存到 Git stash，当前规范与 main 一致。
+
+## 本次合并与分支清理
+
+- 开始时工作区干净；确认 PR #4 已合并，但目标为原账户分支而非 main。
+- 复用现有分支创建 PR #5，重新检查 **105 项测试通过**，Ruff 检查与格式检查通过；Python 3.11/3.13 的 [PR CI](https://github.com/illufluo/TradeFoundry/actions/runs/41297545492) 均成功后，按用户授权正常 Merge。
+- 本地 main 以 fast-forward 同步。逐一确认四个功能分支的本地及远端提交均已被 main 包含，再正常删除这些分支；保留原 Git stash，不丢弃历史保存的修改。
+- 本次仅合并已有代码和修正进度记录，没有继续开发量化功能，既有研究限制与私有连接验收要求不变。
 
 ## 本轮账户只读接入
 
