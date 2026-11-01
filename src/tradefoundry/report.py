@@ -35,14 +35,19 @@ def write_report(payload: dict, path: Path, experiment_id: str):
             name=label,
             mode="lines",
         )
-    chart.update_layout(title="净值曲线（USDT，已扣原始手续费）", xaxis_title="UTC 时间")
+    title = "净值曲线（USDT，已扣原始手续费）"
+    if payload.get("phase") == "conditional_real_history_replay":
+        title = "条件重放净值（USDT，未计资金费，非完整合约净收益）"
+    chart.update_layout(title=title, xaxis_title="UTC 时间")
     metrics = payload["result"]["metrics"]
     rows = "".join(
         f"<tr><th>{escape(label)}</th><td>{escape(str(metrics[key]))}</td>"
         f"<td>{escape(str(payload['benchmark']['metrics'][key]))}</td></tr>"
         for key, label in LABELS.items()
     )
-    warnings = "".join(f"<li>{escape(text)}</li>" for text in LIMITATIONS)
+    warnings = "".join(
+        f"<li>{escape(text)}</li>" for text in payload.get("limitations", LIMITATIONS)
+    )
     metadata = "".join(
         f"<li>{escape(key)}：{escape(str(payload[key]))}</li>"
         for key in (
@@ -57,6 +62,10 @@ def write_report(payload: dict, path: Path, experiment_id: str):
             "window",
         )
     )
+    metadata += "".join(
+        f"<li>{escape(key)}：{escape(str(value))}</li>"
+        for key, value in payload.get("extra_metadata", {}).items()
+    )
     sensitivity = payload["fee_sensitivity"]
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
@@ -67,14 +76,17 @@ def write_report(payload: dict, path: Path, experiment_id: str):
         "line-height:1.6}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;"
         "padding:8px;text-align:left}li{overflow-wrap:anywhere}.warning{background:#fff1cf;"
         "padding:20px}</style>"
-        f"<h1>TradeFoundry 离线实验</h1><p>实验编号：{escape(experiment_id)}</p>"
+        f"<h1>{escape(payload.get('report_title', 'TradeFoundry 离线实验'))}</h1>"
+        f"<p>实验编号：{escape(experiment_id)}</p>"
         f'<div class="warning"><strong>数据及可信边界</strong><ul>{warnings}</ul>'
         "<p>synthetic 表示固定合成夹具，绝非 OKX 真实历史行情。</p></div>"
         "<script>"
         + get_plotlyjs()
         + "</script>"
         + chart.to_html(full_html=False, include_plotlyjs=False)
-        + "<h2>结果与基准</h2><table><tr><th>指标</th><th>策略</th><th>买入持有</th></tr>"
+        + "<h2>结果与基准</h2>"
+        + f"<p>{escape(payload.get('metric_notice', ''))}</p>"
+        + "<table><tr><th>指标</th><th>策略</th><th>买入持有</th></tr>"
         + rows
         + "</table><h2>手续费敏感性</h2>"
         + f"<p>原始费率加倍后的净收益率：{sensitivity['double_fee_net_return']:.6%}</p>"

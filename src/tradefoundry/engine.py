@@ -4,12 +4,13 @@ import math
 import statistics
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
+from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
 
 from tradefoundry.config import Config
 from tradefoundry.market import INTERVALS, MarketData
 from tradefoundry.strategy import Strategy
 
-COST_VERSION = "taker-unlevered-v1"
+COST_VERSION = "taker-unlevered-lots-ticks-v2"
 METRIC_VERSION = "bar-mtm-cash-rebates-v1"
 LIMITATIONS = [
     "仅功能演示，不构成统计证据或投资建议。",
@@ -25,7 +26,7 @@ LIMITATIONS = [
 class Fill:
     timestamp: datetime
     side: str
-    contracts: int
+    contracts: float
     price: float
     notional: float
     gross_fee: float
@@ -37,7 +38,7 @@ class Fill:
 class Equity:
     timestamp: datetime
     cash: float
-    contracts: int
+    contracts: float
     equity: float
     rebate_pending: float
 
@@ -72,6 +73,16 @@ def backtest(data: MarketData, strategy: Strategy, config: Config) -> Result:
     held_bars = 0
     friction = (config.spread_bps / 2 + config.slippage_bps) / 10000
 
+    def execution_price(reference, side):
+        price = reference * (1 + friction if side == "buy" else 1 - friction)
+        if data.price_tick:
+            tick = Decimal(str(data.price_tick))
+            rounding = ROUND_CEILING if side == "buy" else ROUND_FLOOR
+            price = float((Decimal(str(price)) / tick).to_integral_value(rounding=rounding) * tick)
+        if price <= 0:
+            raise ValueError("不利取整后的成交价无效")
+        return price
+
     def settle(now):
         nonlocal cash, pending
         due = [(time, amount) for time, amount in pending if time <= now]
@@ -82,7 +93,7 @@ def backtest(data: MarketData, strategy: Strategy, config: Config) -> Result:
 
     def fill(side, count, reference, time, reason):
         nonlocal cash, contracts
-        price = reference * (1 + friction if side == "buy" else 1 - friction)
+        price = execution_price(reference, side)
         notional = count * data.contract_value * price
         fee = notional * config.taker_fee
         rebate = fee * config.rebate_fraction if config.rebate_confirmed else 0
@@ -103,8 +114,18 @@ def backtest(data: MarketData, strategy: Strategy, config: Config) -> Result:
             next_observation += 1
         target = strategy.target(closes)
         if target and not contracts:
-            unit_cost = data.contract_value * bar.open * (1 + friction) * (1 + config.taker_fee)
-            count = math.floor(cash * config.position_fraction / unit_cost)
+            unit_cost = (
+                data.contract_value * execution_price(bar.open, "buy") * (1 + config.taker_fee)
+            )
+            step = Decimal(str(data.contract_step))
+            count = float(
+                (
+                    Decimal(str(cash * config.position_fraction)) / Decimal(str(unit_cost)) / step
+                ).to_integral_value(rounding=ROUND_FLOOR)
+                * step
+            )
+            if count < data.minimum_contracts:
+                count = 0
             if count:
                 fill("buy", count, bar.open, bar.timestamp, "lagged_signal")
         elif not target and contracts:

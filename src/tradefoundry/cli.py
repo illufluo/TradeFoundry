@@ -76,6 +76,10 @@ def parser():
     market.add_argument("--site", choices=tuple(SITES), default="global")
     market.add_argument("--days", type=int, default=7)
     market.add_argument("--output", type=Path, default=Path("artifacts/start"))
+    research = commands.add_parser("research", help="无密钥下载真实行情并运行有明确假设的条件重放")
+    research.add_argument("--site", choices=tuple(SITES), default="global")
+    research.add_argument("--days", type=int, default=7)
+    research.add_argument("--output", type=Path, default=Path("artifacts/start"))
     status = commands.add_parser("experiments", help="查询 SQLite 实验记录")
     status.add_argument("--db", type=Path, default=Path("artifacts/experiments.sqlite3"))
     status.add_argument("--limit", type=int, default=20)
@@ -137,10 +141,30 @@ def main(argv=None):
                     raise ConnectionFailure("--scenario 仅可与 --offline 一起使用")
                 settings = DemoSettings.load(args.env_file)
                 result = first_start(
-                    settings, output=args.output, days=args.days, account_only=args.account_only
+                    settings,
+                    output=args.output,
+                    days=args.days,
+                    account_only=args.account_only,
+                    research_config=config,
                 )
             print(encode(result))
-            return 0 if result.get("market_ready", True) else 3
+            return 0 if result.get("research_ready", result.get("market_ready", True)) else 3
+        elif args.command == "research":
+            from tradefoundry.historical_replay import run_research
+
+            market = check_markets(args.site, output=args.output, days=args.days)
+            result = market | {
+                "account_connected": False,
+                "account_status": "not_checked",
+                "research_ready": False,
+                "trusted_backtest_ready": False,
+            }
+            if market["market_ready"]:
+                result |= run_research(
+                    Warehouse(args.output / "warehouse"), market["quality"], args.output, config
+                )
+            print(encode(result))
+            return 0 if result["research_ready"] else 3
         elif args.command == "market-check":
             result = check_markets(args.site, output=args.output, days=args.days)
             print(encode(result | {"account_connected": False, "account_status": "not_checked"}))

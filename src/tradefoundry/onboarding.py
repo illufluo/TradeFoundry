@@ -79,6 +79,7 @@ def first_start(
     account_client=None,
     public_client=None,
     now=None,
+    research_config=None,
 ):
     if type(days) is not int or not 1 <= days <= 30:
         raise ValueError("研究窗口须为 1 到 30 天")
@@ -92,7 +93,7 @@ def first_start(
     }
     if account_only:
         return result
-    return result | check_markets(
+    market = check_markets(
         settings.site,
         output=output,
         days=days,
@@ -100,6 +101,14 @@ def first_start(
         public_client=public_client,
         now=now,
     )
+    if not market["market_ready"]:
+        return result | market | {"research_ready": False, "trusted_backtest_ready": False}
+    from tradefoundry.historical_replay import run_research
+
+    research = run_research(
+        Warehouse(output / "warehouse"), market["quality"], output, research_config
+    )
+    return result | market | research
 
 
 def check_markets(

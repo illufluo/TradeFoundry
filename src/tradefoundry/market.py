@@ -6,6 +6,7 @@ import json
 import math
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from importlib.resources import files
 
 INSTRUMENTS = ("BTC-USDT-SWAP", "ETH-USDT-SWAP")
@@ -56,12 +57,29 @@ class MarketData:
     source: str
     contract_value: float
     bars: tuple[Bar, ...]
+    contract_step: float = 1.0
+    minimum_contracts: float = 1.0
+    price_tick: float = 0.0
 
     def validate(self, *, require_contiguous: bool = True):
         if self.instrument not in INSTRUMENTS or self.interval not in INTERVALS:
             raise ValueError("不支持的标的或周期")
         if not self.source or not math.isfinite(self.contract_value) or self.contract_value <= 0:
             raise ValueError("数据来源及合约单位无效")
+        if (
+            not all(
+                math.isfinite(value) and value > 0
+                for value in (
+                    self.contract_step,
+                    self.minimum_contracts,
+                )
+            )
+            or not math.isfinite(self.price_tick)
+            or self.price_tick < 0
+        ):
+            raise ValueError("合约数量步长、最小数量或价格步长无效")
+        if Decimal(str(self.minimum_contracts)) % Decimal(str(self.contract_step)):
+            raise ValueError("最小合约数量必须对齐数量步长")
         if len(self.bars) < 2:
             raise ValueError("至少需要两根已收盘 K 线")
         previous = None
